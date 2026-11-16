@@ -1,118 +1,166 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useForm } from 'react-hook-form';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/AppText';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/Button';
-import { FormField } from '@/components/FormField';
-import { IconButton } from '@/components/IconButton';
+import { Field } from '@/components/Field';
+import { Group } from '@/components/Group';
+import { HeaderButton } from '@/components/HeaderButton';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { STRINGS } from '@/constants/strings';
 import { useAuth } from '@/contexts/AuthContext';
 import { useComments, useCreateComment, usePost } from '@/hooks/usePosts';
 import { commentSchema, type CommentForm } from '@/schemas';
-import { colors, radius, spacing, typography } from '@/theme/theme';
-import { notify } from '@/utils/confirm';
-import { formatDate } from '@/utils/format';
+import { spacing } from '@/theme/theme';
+import { makeStyles } from '@/theme/useTheme';
+import { hapticSuccess, showError } from '@/utils/feedback';
+import { formatDate, formatLongDate, readingTime } from '@/utils/format';
 
-/** Requisito 2: leitura do post completo + comentários (opcional). */
 export default function PostReadScreen() {
+  const styles = useStyles();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, isTeacher } = useAuth();
   const { data: post, isLoading, isError, error, refetch } = usePost(id);
   const comments = useComments(id);
   const createComment = useCreateComment(id);
-  const { control, handleSubmit, reset } = useForm<CommentForm>({
+  const { control, handleSubmit, reset, formState } = useForm<CommentForm>({
     resolver: zodResolver(commentSchema),
     defaultValues: { content: '' },
   });
 
   const onComment = handleSubmit(async ({ content }) => {
     try {
-      await createComment.mutateAsync({ content, author: user?.name ?? 'Anônimo' });
+      await createComment.mutateAsync({ content, author: user?.name ?? STRINGS.post.anonymous });
       reset();
+      hapticSuccess();
     } catch (e) {
-      notify('Erro ao comentar', (e as Error).message);
+      showError(e);
     }
   });
 
   if (isLoading) return <LoadingState />;
-  if (isError || !post) return <ErrorState message={error?.message ?? 'Post não encontrado.'} onRetry={refetch} />;
+  if (isError || !post) {
+    return <ErrorState message={error?.message ?? STRINGS.post.notFound} onRetry={refetch} />;
+  }
+
+  const total = comments.data?.length ?? 0;
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={100}>
+    <>
       <Stack.Screen
         options={{
           headerRight: isTeacher
             ? () => (
-                <IconButton
-                  icon="create-outline"
-                  label="Editar publicação"
+                <HeaderButton
+                  label={STRINGS.post.edit}
                   onPress={() => router.push({ pathname: '/posts/[id]/edit', params: { id: post.id } })}
+                  testID="edit-post"
                 />
               )
             : undefined,
         }}
       />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>{post.title}</Text>
-        <View style={styles.meta}>
-          <Avatar name={post.author} size={40} />
-          <View>
-            <Text style={styles.author}>{post.author}</Text>
-            <Text style={typography.caption}>
-              Publicado em {formatDate(post.createdAt)}
-              {post.updatedAt !== post.createdAt ? ` · atualizado em ${formatDate(post.updatedAt)}` : ''}
-            </Text>
-          </View>
-        </View>
-        <Text style={styles.body}>{post.content}</Text>
-
-        <View style={styles.divider} />
-
-        <Text style={typography.subtitle}>Comentários ({comments.data?.length ?? 0})</Text>
-        {comments.isLoading ? (
-          <Text style={typography.caption}>Carregando comentários...</Text>
-        ) : comments.data?.length ? (
-          comments.data.map((c) => (
-            <View key={c.id} style={styles.comment}>
-              <Avatar name={c.author} size={32} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.commentAuthor}>
-                  {c.author} <Text style={typography.caption}>· {formatDate(c.createdAt)}</Text>
-                </Text>
-                <Text style={typography.body}>{c.content}</Text>
-              </View>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+      >
+        <View style={styles.article}>
+          <AppText variant="title1" accessibilityRole="header">
+            {post.title}
+          </AppText>
+          <View style={styles.byline}>
+            <Avatar name={post.author} size={34} />
+            <View style={styles.flex}>
+              <AppText variant="subheadline" weight="600">
+                {post.author}
+              </AppText>
+              <AppText variant="footnote" tone="secondary">
+                {formatLongDate(post.createdAt)} · {STRINGS.post.readingTime(readingTime(post.content))}
+              </AppText>
             </View>
-          ))
-        ) : (
-          <Text style={typography.caption}>Seja o primeiro a comentar.</Text>
-        )}
-
-        <View style={styles.commentForm}>
-          <FormField control={control} name="content" label={`Comentar como ${user?.name ?? ''}`} placeholder="Escreva seu comentário" multiline style={{ minHeight: 90 }} />
-          <Button title="Enviar comentário" icon="send" onPress={onComment} loading={createComment.isPending} />
+          </View>
+          <AppText variant="body" style={styles.body} selectable>
+            {post.content}
+          </AppText>
+          {post.updatedAt !== post.createdAt && (
+            <AppText variant="footnote" tone="tertiary">
+              {STRINGS.post.updatedAt(formatDate(post.updatedAt))}
+            </AppText>
+          )}
         </View>
+
+        <Group header={comments.isLoading ? STRINGS.post.loadingComments : STRINGS.post.comments(total)}>
+          {total === 0 && !comments.isLoading ? (
+            <View style={styles.noComments}>
+              <AppText variant="subheadline" tone="secondary">
+                {STRINGS.post.noComments}
+              </AppText>
+            </View>
+          ) : (
+            (comments.data ?? []).map((comment) => (
+              <View key={comment.id} style={styles.comment}>
+                <View style={styles.commentHeader}>
+                  <AppText variant="subheadline" weight="600" style={styles.flex}>
+                    {comment.author}
+                  </AppText>
+                  <AppText variant="footnote" tone="tertiary">
+                    {formatDate(comment.createdAt)}
+                  </AppText>
+                </View>
+                <AppText variant="body">{comment.content}</AppText>
+              </View>
+            ))
+          )}
+        </Group>
+
+        <Group>
+          <Field
+            control={control}
+            name="content"
+            label={STRINGS.post.commentLabel(user?.name ?? '')}
+            placeholder={STRINGS.post.commentPlaceholder}
+            multiline
+            style={styles.commentInput}
+            testID="comment-input"
+          />
+          <Button
+            title={STRINGS.post.sendComment}
+            variant="plain"
+            onPress={onComment}
+            loading={createComment.isPending}
+            disabled={!formState.isDirty}
+            testID="comment-submit"
+          />
+        </Group>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </>
   );
 }
 
-const styles = StyleSheet.create({
-  content: { padding: spacing.lg, paddingBottom: spacing.xxl * 2, gap: spacing.md },
-  title: { fontSize: 26, fontWeight: '800', color: colors.text },
-  meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  author: { fontWeight: '700', color: colors.text },
-  body: { ...typography.body, fontSize: 17, lineHeight: 27 },
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
-  comment: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  commentAuthor: { fontWeight: '700', color: colors.text, marginBottom: 2 },
-  commentForm: { marginTop: spacing.md },
-});
+const useStyles = makeStyles((colors) =>
+  StyleSheet.create({
+    screen: { backgroundColor: colors.ground },
+    content: { paddingBottom: spacing.xxxl },
+    flex: { flex: 1 },
+    article: {
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.xxl,
+      marginBottom: spacing.xxl,
+      gap: spacing.lg,
+    },
+    byline: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    body: { lineHeight: 27 },
+    noComments: { padding: spacing.lg },
+    comment: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 2 },
+    commentHeader: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
+    commentInput: { minHeight: 72 },
+  }),
+);

@@ -1,6 +1,5 @@
 import { UserFormScreen } from '@/screens/UserFormScreen';
 
-/** Requisito 8 (5 para alunos): cadastro de alunos. */
-export default function NewStudentScreen() {
+export default function New() {
   return <UserFormScreen kind="students" />;
 }

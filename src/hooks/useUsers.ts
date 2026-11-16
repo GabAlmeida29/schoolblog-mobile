@@ -6,16 +6,27 @@ export const PAGE_SIZE = 10;
 
 export const userKeys = {
   all: (kind: UserKind) => ['users', kind] as const,
+  list: (kind: UserKind, search: string) => ['users', kind, 'list', search] as const,
+  total: (kind: UserKind) => ['users', kind, 'total'] as const,
   detail: (kind: UserKind, id: string) => ['users', kind, 'detail', id] as const,
 };
 
-/** Listagem paginada no back-end (page/limit) consumida com scroll infinito. */
-export function useUsers(kind: UserKind) {
+export function useUsers(kind: UserKind, search = '') {
+  const term = search.trim();
   return useInfiniteQuery({
-    queryKey: [...userKeys.all(kind), 'list'],
-    queryFn: ({ pageParam }) => usersService.list(kind, pageParam, PAGE_SIZE),
+    queryKey: userKeys.list(kind, term),
+    queryFn: ({ pageParam }) => usersService.list(kind, pageParam, PAGE_SIZE, term),
     initialPageParam: 1,
-    getNextPageParam: (last) => (last.meta.page < last.meta.totalPages ? last.meta.page + 1 : undefined),
+    getNextPageParam: (last) =>
+      last.meta.page < last.meta.totalPages ? last.meta.page + 1 : undefined,
+  });
+}
+
+export function useUsersTotal(kind: UserKind, enabled = true) {
+  return useQuery({
+    queryKey: userKeys.total(kind),
+    queryFn: async () => (await usersService.list(kind, 1, 1)).meta.total,
+    enabled,
   });
 }
 

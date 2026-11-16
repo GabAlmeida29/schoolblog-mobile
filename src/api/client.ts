@@ -1,5 +1,6 @@
 import { AxiosError, create } from 'axios';
 import { API_URL } from '@/config/env';
+import { STRINGS } from '@/constants/strings';
 
 export const api = create({
   baseURL: API_URL,
@@ -10,12 +11,10 @@ export const api = create({
 let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
 
-/** Chamado pelo AuthContext: mantém o token em memória para o interceptor. */
 export function setAuthToken(token: string | null) {
   authToken = token;
 }
 
-/** Chamado pelo AuthContext: força logout quando a API responde 401 (token expirado). */
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
@@ -40,7 +39,6 @@ export class ApiError extends Error {
   }
 }
 
-/** Converte erros do axios/back-end em mensagens amigáveis em pt-BR. */
 export function toApiError(error: unknown): ApiError {
   if (error instanceof ApiError) return error;
   const err = error as AxiosError<ApiErrorBody>;
@@ -52,16 +50,12 @@ export function toApiError(error: unknown): ApiError {
       const field = first.path?.join('.');
       return new ApiError(field ? `${field}: ${first.message}` : first.message, status);
     }
-    return new ApiError(data?.error ?? `Erro ${status} ao comunicar com o servidor.`, status);
+    return new ApiError(data?.error ?? STRINGS.errors.status(status), status);
   }
 
-  if (err.request) {
-    return new ApiError(
-      `Não foi possível conectar à API em ${API_URL}. Verifique se o back-end está rodando e se o celular está na mesma rede Wi-Fi.`,
-    );
-  }
+  if (err.request) return new ApiError(STRINGS.errors.network(API_URL));
 
-  return new ApiError(err.message ?? 'Erro inesperado.');
+  return new ApiError(err.message ?? STRINGS.errors.unexpected);
 }
 
 api.interceptors.response.use(

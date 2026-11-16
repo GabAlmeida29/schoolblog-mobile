@@ -1,108 +1,141 @@
-import { router } from 'expo-router';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Stack, router } from 'expo-router';
+import { useState } from 'react';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/AppText';
 import { Avatar } from '@/components/Avatar';
-import { Fab } from '@/components/Fab';
-import { IconButton } from '@/components/IconButton';
+import { HeaderButton } from '@/components/HeaderButton';
+import { Row } from '@/components/Row';
+import { SearchField } from '@/components/SearchField';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { STRINGS } from '@/constants/strings';
 import { useAuth } from '@/contexts/AuthContext';
-import { useDeleteUser, useUsers } from '@/hooks/useUsers';
-import { colors, radius, spacing, typography } from '@/theme/theme';
-import { confirmAction, notify } from '@/utils/confirm';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useUsers } from '@/hooks/useUsers';
+import { hairline, radius, spacing } from '@/theme/theme';
+import { makeStyles, useTheme } from '@/theme/useTheme';
 import type { User, UserKind } from '@/types';
 
-const LABELS: Record<UserKind, { singular: string; plural: string }> = {
-  teachers: { singular: 'professor(a)', plural: 'professores' },
-  students: { singular: 'aluno(a)', plural: 'alunos' },
-};
+function describe(user: User, kind: UserKind) {
+  if (kind === 'teachers') return user.subject ?? user.email;
+  const parts = [user.classGroup, user.registration && STRINGS.users.registration(user.registration)];
+  return parts.filter(Boolean).join(' · ') || user.email;
+}
 
-/** Listagem paginada (10 por página, carrega a próxima ao rolar) com editar/excluir. */
 export function UserListScreen({ kind }: { kind: UserKind }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { user: me } = useAuth();
-  const labels = LABELS[kind];
-  const { data, isLoading, isError, error, refetch, isRefetching, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useUsers(kind);
-  const deleteUser = useDeleteUser(kind);
+  const texts = STRINGS.users[kind];
+  const [search, setSearch] = useState('');
+  const term = useDebounce(search).trim();
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isRefetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useUsers(kind, term);
 
-  const users = data?.pages.flatMap((p) => p.data) ?? [];
+  const users = data?.pages.flatMap((page) => page.data) ?? [];
   const total = data?.pages[0]?.meta.total ?? 0;
-  const loadedPages = data?.pages.length ?? 0;
-  const totalPages = data?.pages[0]?.meta.totalPages ?? 0;
-
-  const handleDelete = (u: User) =>
-    confirmAction(`Excluir ${labels.singular}`, `Deseja excluir ${u.name}? Esta ação não pode ser desfeita.`, () =>
-      deleteUser.mutate(u.id, { onError: (e) => notify('Erro ao excluir', e.message) }),
-    );
-
-  if (isLoading) return <LoadingState />;
-  if (isError) return <ErrorState message={error.message} onRetry={refetch} />;
-
-  const editPath = kind === 'teachers' ? '/teachers/[id]' : '/students/[id]';
+  const formPath = kind === 'teachers' ? '/teacher/[id]' : '/student/[id]';
 
   return (
-    <View style={{ flex: 1 }}>
-      <FlatList
-        data={users}
-        keyExtractor={(u) => u.id}
-        contentContainerStyle={styles.list}
-        onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
-        onEndReachedThreshold={0.3}
-        refreshControl={<RefreshControl refreshing={isRefetching && !isFetchingNextPage} onRefresh={refetch} tintColor={colors.primary} />}
-        ListHeaderComponent={
-          <Text style={[typography.caption, { marginBottom: spacing.md }]}>
-            {total} {labels.plural} · página {loadedPages} de {totalPages}
-          </Text>
-        }
-        ListEmptyComponent={<EmptyState icon="people-outline" message={`Nenhum(a) ${labels.singular} cadastrado(a).`} />}
-        ListFooterComponent={isFetchingNextPage ? <ActivityIndicator color={colors.primary} style={{ margin: spacing.lg }} /> : null}
-        ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-        renderItem={({ item }) => (
-          <View style={styles.row} testID={`user-row-${item.id}`}>
-            <Avatar name={item.name} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.name} numberOfLines={1}>
-                {item.name}
-                {item.id === me?.id ? ' (você)' : ''}
-              </Text>
-              <Text style={typography.caption} numberOfLines={1}>
-                {item.email}
-              </Text>
-            </View>
-            <IconButton
-              icon="create-outline"
-              label={`Editar ${item.name}`}
-              onPress={() => router.push({ pathname: editPath, params: { id: item.id } })}
+    <>
+      <Stack.Screen
+        options={{
+          title: texts.title,
+          headerRight: () => (
+            <HeaderButton
+              icon="plus"
+              label={texts.add}
+              onPress={() => router.push(kind === 'teachers' ? '/teacher/new' : '/student/new')}
+              testID="add-user"
             />
-            {item.id !== me?.id && (
-              <IconButton
-                icon="trash-outline"
-                label={`Excluir ${item.name}`}
-                color={colors.danger}
-                background={colors.dangerSoft}
-                onPress={() => handleDelete(item)}
-              />
-            )}
+          ),
+        }}
+      />
+      <FlatList
+        data={isLoading || isError ? [] : users}
+        keyExtractor={(item) => item.id}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardDismissMode="on-drag"
+        style={{ backgroundColor: colors.ground }}
+        contentContainerStyle={styles.content}
+        onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
+        onEndReachedThreshold={0.4}
+        refreshControl={
+          <RefreshControl refreshing={isRefetching && !isFetchingNextPage} onRefresh={refetch} />
+        }
+        ListHeaderComponent={
+          <View style={styles.search}>
+            <SearchField
+              value={search}
+              onChangeText={setSearch}
+              placeholder={STRINGS.users.searchPlaceholder}
+              testID="user-search"
+            />
           </View>
-        )}
+        }
+        renderItem={({ item, index }) => {
+          const isMe = item.id === me?.id;
+          const name = isMe ? `${item.name} (${STRINGS.common.you})` : item.name;
+          return (
+            <View
+              style={[styles.cell, index === 0 && styles.first, index === users.length - 1 && styles.last]}
+            >
+              {index > 0 && <View style={styles.separator} />}
+              <Row
+                testID={`user-row-${item.id}`}
+                leading={<Avatar name={item.name} size={36} />}
+                title={name}
+                subtitle={describe(item, kind)}
+                accessibilityLabel={STRINGS.users.open(item.name)}
+                chevron
+                onPress={() => router.push({ pathname: formPath, params: { id: item.id } })}
+              />
+            </View>
+          );
+        }}
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator color={colors.secondary} style={styles.footer} />
+          ) : users.length ? (
+            <AppText variant="footnote" tone="secondary" style={styles.count} testID="user-summary">
+              {texts.count(users.length, total)}
+            </AppText>
+          ) : null
+        }
+        ListEmptyComponent={
+          isLoading ? (
+            <LoadingState />
+          ) : isError ? (
+            <ErrorState message={error.message} onRetry={refetch} />
+          ) : (
+            <EmptyState
+              icon={term ? 'noResults' : 'empty'}
+              message={term ? STRINGS.users.emptySearch(term) : texts.empty}
+            />
+          )
+        }
       />
-      <Fab
-        label={`Cadastrar ${labels.singular}`}
-        onPress={() => router.push(kind === 'teachers' ? '/teachers/new' : '/students/new')}
-      />
-    </View>
+    </>
   );
 }
 
-const styles = StyleSheet.create({
-  list: { padding: spacing.lg, paddingBottom: 100, flexGrow: 1 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  name: { fontSize: 15, fontWeight: '600', color: colors.text },
-});
+const useStyles = makeStyles((colors) =>
+  StyleSheet.create({
+    content: { paddingBottom: spacing.xxxl, flexGrow: 1 },
+    search: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.md },
+    cell: { marginHorizontal: spacing.lg, backgroundColor: colors.surface },
+    first: { borderTopLeftRadius: radius.cell, borderTopRightRadius: radius.cell, overflow: 'hidden' },
+    last: { borderBottomLeftRadius: radius.cell, borderBottomRightRadius: radius.cell, overflow: 'hidden' },
+    separator: { height: hairline, marginLeft: spacing.lg + 36 + spacing.md, backgroundColor: colors.separator },
+    footer: { margin: spacing.lg },
+    count: { textAlign: 'center', marginTop: spacing.md },
+  }),
+);

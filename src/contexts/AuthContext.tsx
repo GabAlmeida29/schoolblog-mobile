@@ -1,23 +1,32 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { setAuthToken, setUnauthorizedHandler } from '@/api/client';
 import { authService } from '@/api/services';
 import { tokenStorage } from '@/storage/tokenStorage';
-import type { AuthUser } from '@/types';
+import type { UpdateMeInput, User } from '@/types';
 
 interface AuthContextValue {
-  user: AuthUser | null;
-  /** true enquanto restaura a sessão salva (evita piscar a tela de login). */
+  user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   isTeacher: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateProfile: (input: UpdateMeInput) => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const logout = useCallback(async () => {
@@ -26,7 +35,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await tokenStorage.clear();
   }, []);
 
-  // Restaura a sessão: lê o token do SecureStore e valida no back-end (GET /auth/me).
   useEffect(() => {
     let active = true;
     (async () => {
@@ -34,8 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const token = await tokenStorage.get();
         if (!token) return;
         setAuthToken(token);
-        const me = await authService.me();
-        if (active) setUser(me);
+        const profile = await authService.me();
+        if (active) setUser(profile);
       } catch {
         await logout();
       } finally {
@@ -47,17 +55,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [logout]);
 
-  // Token expirado/inválido em qualquer requisição => volta para o login.
   useEffect(() => {
     setUnauthorizedHandler(() => void logout());
     return () => setUnauthorizedHandler(null);
   }, [logout]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const { token, user: loggedUser } = await authService.login(email.trim(), password);
+    const { token } = await authService.login(email.trim().toLowerCase(), password);
     setAuthToken(token);
     await tokenStorage.set(token);
-    setUser(loggedUser);
+    setUser(await authService.me());
+  }, []);
+
+  const updateProfile = useCallback(async (input: UpdateMeInput) => {
+    const { token, profile } = await authService.updateMe(input);
+    setAuthToken(token);
+    await tokenStorage.set(token);
+    setUser(profile);
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    setUser(await authService.me());
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -68,8 +86,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isTeacher: user?.role === 'PROFESSOR',
       login,
       logout,
+      updateProfile,
+      refreshProfile,
     }),
-    [user, isLoading, login, logout],
+    [user, isLoading, login, logout, updateProfile, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

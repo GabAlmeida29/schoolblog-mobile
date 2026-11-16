@@ -1,41 +1,54 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router/js-tabs';
 import type { ColorValue } from 'react-native';
+import { Icon, type IconName } from '@/components/Icon';
+import { STRINGS } from '@/constants/strings';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/theme/theme';
+import { useTheme } from '@/theme/useTheme';
 
-type IconName = keyof typeof Ionicons.glyphMap;
-
-function icon(name: IconName) {
-  const TabIcon = ({ color, size }: { color: ColorValue; size: number }) => (
-    <Ionicons name={name} size={size} color={color} />
+function tabIcon(outline: IconName, filled: IconName) {
+  const TabIcon = ({ color, focused }: { color: ColorValue; focused: boolean }) => (
+    <Icon name={focused ? filled : outline} size={24} color={color} />
   );
-  TabIcon.displayName = `TabIcon(${name})`;
+  TabIcon.displayName = `TabIcon(${outline})`;
   return TabIcon;
 }
 
 export default function TabsLayout() {
   const { isTeacher } = useAuth();
+  const { colors } = useTheme();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
-        headerTitleStyle: { fontWeight: '700', color: colors.text },
-        sceneStyle: { backgroundColor: colors.background },
+        headerShown: false,
+        tabBarActiveTintColor: colors.tint,
+        tabBarInactiveTintColor: colors.tertiary,
+        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.separator },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '500' },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Posts', tabBarIcon: icon('newspaper-outline') }} />
-
-      {/* Abas administrativas: aparecem apenas para professores */}
+      <Tabs.Screen
+        name="(home)"
+        options={{ title: STRINGS.tabs.home, tabBarIcon: tabIcon('home', 'homeFill') }}
+      />
       <Tabs.Protected guard={isTeacher}>
-        <Tabs.Screen name="admin" options={{ title: 'Admin', tabBarIcon: icon('create-outline') }} />
-        <Tabs.Screen name="teachers" options={{ title: 'Professores', tabBarIcon: icon('school-outline') }} />
-        <Tabs.Screen name="students" options={{ title: 'Alunos', tabBarIcon: icon('people-outline') }} />
+        <Tabs.Screen
+          name="manage"
+          options={{ title: STRINGS.tabs.manage, tabBarIcon: tabIcon('manage', 'manageFill') }}
+        />
+        <Tabs.Screen
+          name="teachers"
+          options={{ title: STRINGS.tabs.teachers, tabBarIcon: tabIcon('teachers', 'teachersFill') }}
+        />
+        <Tabs.Screen
+          name="students"
+          options={{ title: STRINGS.tabs.students, tabBarIcon: tabIcon('students', 'studentsFill') }}
+        />
       </Tabs.Protected>
-
-      <Tabs.Screen name="profile" options={{ title: 'Perfil', tabBarIcon: icon('person-circle-outline') }} />
+      <Tabs.Screen
+        name="profile"
+        options={{ title: STRINGS.tabs.profile, tabBarIcon: tabIcon('profile', 'profileFill') }}
+      />
     </Tabs>
   );
 }

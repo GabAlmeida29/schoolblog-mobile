@@ -1,8 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import { UserFormScreen } from '@/screens/UserFormScreen';
 
-/** Requisito 6: edição de professores. */
-export default function EditTeacherScreen() {
+export default function Edit() {
   const { id } = useLocalSearchParams<{ id: string }>();
   return <UserFormScreen kind="teachers" id={id} />;
 }

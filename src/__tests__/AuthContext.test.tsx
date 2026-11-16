@@ -5,12 +5,27 @@ import { authService } from '@/api/services';
 import { tokenStorage } from '@/storage/tokenStorage';
 
 jest.mock('@/api/services', () => ({
-  authService: { login: jest.fn(), me: jest.fn() },
+  authService: { login: jest.fn(), me: jest.fn(), updateMe: jest.fn() },
 }));
 
 const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
-const teacher = { id: 't1', name: 'Prof. Maria', email: 'professor@schoolblog.com', role: 'PROFESSOR' as const };
-const student = { id: 's1', name: 'Lucas', email: 'aluno@schoolblog.com', role: 'ALUNO' as const };
+
+const profile = (role: 'PROFESSOR' | 'ALUNO', name: string) => ({
+  id: role === 'PROFESSOR' ? 't1' : 's1',
+  name,
+  email: `${name.toLowerCase()}@gmail.com`,
+  role,
+  phone: null,
+  bio: null,
+  subject: null,
+  education: null,
+  registration: null,
+  classGroup: null,
+  birthDate: null,
+  guardianName: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+});
 
 describe('AuthContext', () => {
   beforeEach(async () => {
@@ -18,40 +33,49 @@ describe('AuthContext', () => {
     await tokenStorage.clear();
   });
 
-  it('login de professor(a) salva o token e libera permissões de professor', async () => {
-    (authService.login as jest.Mock).mockResolvedValue({ token: 'jwt-123', user: teacher });
+  it('login salva o token e carrega o perfil completo', async () => {
+    (authService.login as jest.Mock).mockResolvedValue({ token: 'jwt-123', user: {} });
+    (authService.me as jest.Mock).mockResolvedValue(profile('PROFESSOR', 'Felipe'));
     const { result } = await renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    await act(() => result.current.login('professor@schoolblog.com', 'docente123'));
+    await act(() => result.current.login('Felipe@Gmail.com', '123456'));
 
-    expect(result.current.isAuthenticated).toBe(true);
+    expect(authService.login).toHaveBeenCalledWith('felipe@gmail.com', '123456');
     expect(result.current.isTeacher).toBe(true);
     expect(await tokenStorage.get()).toBe('jwt-123');
   });
 
   it('aluno(a) autentica mas não é professor', async () => {
-    (authService.login as jest.Mock).mockResolvedValue({ token: 'jwt-aluno', user: student });
+    (authService.login as jest.Mock).mockResolvedValue({ token: 'jwt-aluno', user: {} });
+    (authService.me as jest.Mock).mockResolvedValue(profile('ALUNO', 'Maria'));
     const { result } = await renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    await act(() => result.current.login('aluno@schoolblog.com', 'aluno123'));
+    await act(() => result.current.login('maria@gmail.com', '123456'));
 
     expect(result.current.isAuthenticated).toBe(true);
     expect(result.current.isTeacher).toBe(false);
   });
 
-  it('restaura a sessão salva validando o token em /auth/me', async () => {
-    await tokenStorage.set('jwt-salvo');
-    (authService.me as jest.Mock).mockResolvedValue(teacher);
-
+  it('updateProfile troca o token e atualiza o usuário', async () => {
+    await tokenStorage.set('jwt-antigo');
+    (authService.me as jest.Mock).mockResolvedValue(profile('PROFESSOR', 'Felipe'));
+    (authService.updateMe as jest.Mock).mockResolvedValue({
+      token: 'jwt-novo',
+      user: {},
+      profile: profile('PROFESSOR', 'Felipe Andrade'),
+    });
     const { result } = await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.user?.name).toBe('Felipe'));
 
-    await waitFor(() => expect(result.current.user).toEqual(teacher));
-    expect(authService.me).toHaveBeenCalled();
+    await act(() => result.current.updateProfile({ name: 'Felipe Andrade' }));
+
+    expect(result.current.user?.name).toBe('Felipe Andrade');
+    expect(await tokenStorage.get()).toBe('jwt-novo');
   });
 
-  it('descarta token inválido e o logout limpa a sessão', async () => {
+  it('descarta token inválido ao restaurar a sessão', async () => {
     await tokenStorage.set('jwt-expirado');
     (authService.me as jest.Mock).mockRejectedValue(new Error('401'));
 

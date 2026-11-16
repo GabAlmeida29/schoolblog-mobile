@@ -1,13 +1,18 @@
-// Mocks globais para os testes (jest-expo já mocka a maior parte dos módulos nativos).
 jest.mock('expo-secure-store', () => {
   const store = new Map<string, string>();
   return {
-    getItemAsync: jest.fn(async (k: string) => store.get(k) ?? null),
-    setItemAsync: jest.fn(async (k: string, v: string) => {
-      store.set(k, v);
+    getItemAsync: jest.fn(async (key: string) => store.get(key) ?? null),
+    setItemAsync: jest.fn(async (key: string, value: string) => {
+      store.set(key, value);
     }),
-    deleteItemAsync: jest.fn(async (k: string) => {
-      store.delete(k);
+    deleteItemAsync: jest.fn(async (key: string) => {
+      store.delete(key);
     }),
   };
 });
+
+jest.mock('expo-haptics', () => ({
+  notificationAsync: jest.fn(async () => undefined),
+  selectionAsync: jest.fn(async () => undefined),
+  NotificationFeedbackType: { Success: 'success', Error: 'error' },
+}));

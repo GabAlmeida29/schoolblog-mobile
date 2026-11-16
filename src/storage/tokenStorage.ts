@@ -3,7 +3,6 @@ import { Platform } from 'react-native';
 
 const TOKEN_KEY = 'schoolblog.token';
 
-// SecureStore (Keychain/Keystore) no celular; localStorage apenas no `expo start --web`.
 export const tokenStorage = {
   async get(): Promise<string | null> {
     if (Platform.OS === 'web') return globalThis.localStorage?.getItem(TOKEN_KEY) ?? null;

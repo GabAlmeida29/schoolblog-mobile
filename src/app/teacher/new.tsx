@@ -1,6 +1,5 @@
 import { UserFormScreen } from '@/screens/UserFormScreen';
 
-/** Requisito 5: cadastro de professores. */
-export default function NewTeacherScreen() {
+export default function New() {
   return <UserFormScreen kind="teachers" />;
 }

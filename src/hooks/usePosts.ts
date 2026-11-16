@@ -28,7 +28,8 @@ export function usePost(id?: string) {
 export function useSavePost(id?: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: PostInput) => (id ? postsService.update(id, input) : postsService.create(input)),
+    mutationFn: (input: PostInput) =>
+      id ? postsService.update(id, input) : postsService.create(input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: postKeys.all }),
   });
 }
